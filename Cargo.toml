@@ -4,8 +4,26 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-windows-sys = { version = "0.52", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+reqwest = { version = "0.12", features = ["blocking", "rustls-tls"], default-features = false }
+windows-sys = { version = "0.52", features = [
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_Threading",
+    "Win32_Foundation",
+    "Win32_System_Console",
+    "Win32_System_Registry",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_SystemServices"
+] }
+winreg = "0.52"
+rand = "0.8"
 
 [profile.release]
 strip = false
+opt-level = "z"
+lto = true
+codegen-units = 1
+
+# Build as Windows GUI application (no console window)
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
 

@@ -1,4 +1,4 @@
-﻿﻿use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
+﻿use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
 use crate::key_state::KeyState;
 
 /// Helper function to check if a key is pressed
