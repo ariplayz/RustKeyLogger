@@ -174,7 +174,20 @@ Hello World<F5>
 
 ## Uninstallation
 
-### Complete Removal
+### Automated Uninstaller (Recommended)
+Run the included PowerShell uninstaller script:
+```powershell
+.\uninstall.ps1
+```
+
+This will automatically:
+- Kill all WinSysUtils and watchdog processes
+- Remove the installation directory
+- Remove the registry startup entry
+- Show progress and confirmation
+
+### Manual Removal
+If the script doesn't work, manually remove:
 ```powershell
 # 1. Kill all processes
 Get-Process | Where-Object {

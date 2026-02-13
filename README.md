@@ -205,7 +205,22 @@ This application will likely be flagged by antivirus software as a keylogger bec
 
 ## Uninstallation
 
-To remove the keylogger:
+### Automated Uninstaller (Recommended)
+
+Run the included `uninstall.ps1` script:
+```powershell
+.\uninstall.ps1
+```
+
+The script automatically:
+- Terminates all WinSysUtils and watchdog processes
+- Removes the installation directory
+- Removes the registry startup entry
+- Displays progress and completion status
+
+### Manual Removal
+
+If the automated script doesn't work, manually remove:
 
 1. **Kill Processes**:
 ```powershell
