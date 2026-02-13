@@ -1,4 +1,4 @@
-﻿# Rust KeyLogger - Windowless Edition
+﻿# Rust KeyLogger
 
 A complete Windows keylogger written in Rust that runs silently in the background without any console window. This is a complete remake of the original C# Windows Forms keylogger project.
 
