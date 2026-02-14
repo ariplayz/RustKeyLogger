@@ -11,6 +11,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
+use std::os::windows::process::CommandExt;
 use winreg::enums::*;
 use winreg::RegKey;
 use rand::Rng;
@@ -195,7 +196,7 @@ fn ensure_installed() {
     exit(0);
 }
 
-fn kill_existing_instances(install_path: &Path) {
+fn kill_existing_instances(_install_path: &Path) {
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if snapshot == INVALID_HANDLE_VALUE {
@@ -267,7 +268,7 @@ fn run_watchdog() {
 }
 
 fn is_main_process_running(install_path: &Path) -> bool {
-    let install_path_str = install_path.to_string_lossy().to_lowercase();
+    let _install_path_str = install_path.to_string_lossy().to_lowercase();
 
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -314,7 +315,7 @@ fn is_main_process_running(install_path: &Path) -> bool {
 
 fn is_watchdog_running() -> bool {
     let install_dir = get_install_dir();
-    let install_dir_str = install_dir.to_string_lossy().to_lowercase();
+    let _install_dir_str = install_dir.to_string_lossy().to_lowercase();
 
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -339,8 +340,8 @@ fn is_watchdog_running() -> bool {
 
         if Process32FirstW(snapshot, &mut pe32) != 0 {
             loop {
-                let exe_name = String::from_utf16_lossy(&pe32.szExeFile)
-                    .trim_end_matches('\0');
+                let exe_name_string = String::from_utf16_lossy(&pe32.szExeFile);
+                let exe_name = exe_name_string.trim_end_matches('\0');
 
                 // Check if it's a 12-digit number (watchdog naming pattern)
                 if exe_name.len() >= 12 {
