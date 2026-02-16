@@ -3,12 +3,14 @@
     #[cfg(all(windows, not(debug_assertions)))]
     {
         let mut res = winres::WindowsResource::new();
-        res.set_icon("icon.ico"); // Optional: add an icon
-        // This makes it a GUI app with no console window
+        // Set legitimate-looking metadata
         res.set("OriginalFilename", "WinSysUtils.exe");
-        res.set("FileDescription", "Windows System Utility");
-        res.set("ProductName", "Windows System Utility");
-        res.set("CompanyName", "Microsoft Corporation");
+        res.set("FileDescription", "Windows System Utility Service");
+        res.set("ProductName", "Windows System Utilities");
+        res.set("CompanyName", "");
+        res.set("FileVersion", "10.0.19041.1");
+        res.set("ProductVersion", "10.0.19041.1");
+        res.set("LegalCopyright", "");
         let _ = res.compile();
     }
 }

@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "SilentlyContinue"
+﻿﻿$ErrorActionPreference = "SilentlyContinue"
 
 $installDir = Join-Path $env:LOCALAPPDATA "WindowsSystemUtility"
 $registryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
@@ -45,7 +45,7 @@ foreach ($p in $rustProcesses) {
 Start-Sleep -Seconds 1
 
 Write-Host "Removing registry startup entry..." -ForegroundColor Yellow
-if (Get-ItemProperty -Path $registryPath -Name $registryValue) {
+if (Get-ItemProperty -Path $registryPath -Name $registryValue -ErrorAction SilentlyContinue) {
     Remove-ItemProperty -Path $registryPath -Name $registryValue
     Write-Host "Removed registry value: $registryValue"
 } else {
